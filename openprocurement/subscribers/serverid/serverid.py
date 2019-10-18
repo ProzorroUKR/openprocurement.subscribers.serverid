@@ -5,13 +5,13 @@ from os import environ
 from binascii import hexlify, unhexlify
 from Crypto.Cipher import AES
 from pyramid.events import NewRequest
-from webob.exc import HTTPPreconditionFailed
+from pyramid.httpexceptions import HTTPPreconditionFailed
 from logging import getLogger
 from datetime import datetime
 from pytz import timezone
 from hashlib import md5
 
-TZ = timezone(environ['TZ'] if 'TZ' in environ else 'Europe/Kiev')
+TZ = timezone(environ["TZ"] if "TZ" in environ else "Europe/Kiev")
 
 logger = getLogger(__name__)
 
@@ -31,67 +31,49 @@ def decrypt(sid, key):
         text = AES.new(sid).decrypt(unhexlify(key))
         text.startswith(sid)
     except:
-        text = ''
+        text = ""
     return text
 
 
 def server_id_callback(request, response):
-    server_id = request.registry.couchdb_server_id
-    value, time = encrypt(server_id)
-    response.set_cookie(name='SERVER_ID', value=value)
-    logger.debug('New cookie: {} ({})'.format(value, time),
-                 extra={'MESSAGE_ID': 'serverid_new'})
+    couchdb_server_id = request.registry.couchdb_server_id
+    value, time = encrypt(couchdb_server_id)
+    response.set_cookie(name="SERVER_ID", value=value)
+    logger.info("New cookie: {} ({})".format(value, time), extra={"MESSAGE_ID": "serverid_new"})
+
+
+def server_id_response(request):
+    request.response = HTTPPreconditionFailed()
+    request.response.empty_body = True
+    request.add_response_callback(server_id_callback)
+    return request.response
 
 
 def server_id_validator(event):
     request = event.request
-    server_id = event.request.registry.couchdb_server_id
-    cookies = SimpleCookie(request.environ.get('HTTP_COOKIE'))
-    cookie_server_id = cookies.get('SERVER_ID', None)
+    couchdb_server_id = request.registry.couchdb_server_id
+    cookies = SimpleCookie(request.environ.get("HTTP_COOKIE"))
+    cookie_server_id = cookies.get("SERVER_ID", None)
     if cookie_server_id:
         value = cookie_server_id.value
-        decrypted = decrypt(server_id, value)
-        if not decrypted or not decrypted.startswith(server_id):
-            logger.info('Invalid cookie: {}'.format(value,
-                        extra={'MESSAGE_ID': 'serverid_invalid'}))
-            response_cookie = SimpleCookie()
-            value, time = encrypt(server_id)
-            response_cookie['SERVER_ID'] = value
-            response_cookie['SERVER_ID']['path'] = '/'
-            request.response = HTTPPreconditionFailed(
-                headers={'Set-Cookie': response_cookie['SERVER_ID'].OutputString()}
-            )
-            request.response.empty_body = True
-            logger.info('New cookie: {} ({})'.format(value, time),
-                        extra={'MESSAGE_ID': 'serverid_new'})
-            raise request.response
-        else:
-            time = decrypted[len(server_id):]
-    elif request.method in ['POST', 'PATCH', 'PUT', 'DELETE']:
-        value, time = encrypt(server_id)
-        response_cookie = SimpleCookie()
-        response_cookie['SERVER_ID'] = value
-        response_cookie['SERVER_ID']['path'] = '/'
-        request.response = HTTPPreconditionFailed(
-            headers={'Set-Cookie': response_cookie['SERVER_ID'].OutputString()}
-        )
-        request.response.empty_body = True
-        logger.info('New cookie: {} ({})'.format(value, time),
-                    extra={'MESSAGE_ID': 'serverid_new'})
-        raise request.response
+        decrypted = decrypt(couchdb_server_id, value)
+        if not decrypted or not decrypted.startswith(couchdb_server_id):
+            logger.info("Invalid cookie: {}".format(value, extra={"MESSAGE_ID": "serverid_invalid"}))
+            raise server_id_response(request)
+    elif request.method in ["POST", "PATCH", "PUT", "DELETE"]:
+        raise server_id_response(request)
     if not cookie_server_id:
         request.add_response_callback(server_id_callback)
         return request.response
 
 
 def includeme(config):
-    logger.info('init server_id NewRequest subscriber')
-
-    if config.registry.server_id == '':
-        config.registry.couchdb_server_id = uuid.uuid4().hex
-        logger.warning('\'server_id\' is empty. Used generated \'server_id\' {}'.format(
-            config.registry.couchdb_server_id
-        ))
+    logger.info("Init server_id NewRequest subscriber")
+    server_id = config.registry.server_id
+    if server_id == "":
+        couchdb_server_id = uuid.uuid4().hex
+        config.registry.couchdb_server_id = couchdb_server_id
+        logger.warning("No 'server_id' specified. Used generated 'server_id' {}".format(couchdb_server_id))
     else:
-        config.registry.couchdb_server_id = md5(config.registry.server_id).hexdigest()
+        config.registry.couchdb_server_id = md5(server_id).hexdigest()
     config.add_subscriber(server_id_validator, NewRequest)
