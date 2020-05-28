@@ -13,6 +13,7 @@ from datetime import datetime
 from pytz import timezone
 from pyramid.config import Configurator
 from pyramid.httpexceptions import HTTPNotFound, HTTPInternalServerError
+from six import b
 
 TZ = timezone(environ['TZ'] if 'TZ' in environ else 'Europe/Kiev')
 
@@ -87,10 +88,10 @@ class SubscriberTest(unittest.TestCase):
         value, time = encrypt(sid)
 
         decrypted = decrypt(sid, value)
-        self.assertEqual(decrypted.startswith(sid), True)
+        self.assertTrue(decrypted.startswith(b(sid)))
 
         value = ''
-        for x in xrange(0, 32):
+        for x in range(0, 32):
             value += 'hello'
         decrypted = decrypt(sid, value)
         self.assertNotEqual(decrypted.startswith(sid), True)
@@ -108,7 +109,7 @@ class SubscriberTest(unittest.TestCase):
         self.assertEqual(self.app.cookies, {})
         resp = self.app.get(path, status=status_code)
         self.assertEqual(resp.status, status)
-        self.assertEqual(resp.body, '')
+        self.assertEqual(resp.body, b(''))
         header = resp.headers.get('Set-Cookie', None).split(';')[0].split('=')
         header_name = header[0]
         header_value = header[1]
@@ -131,7 +132,7 @@ class SubscriberTest(unittest.TestCase):
         self.assertNotEqual(cookie, None)
         resp = self.app.get(path, status=status_code)
         self.assertEqual(resp.status, status)
-        self.assertEqual(resp.body, '')
+        self.assertEqual(resp.body, b(''))
         header = resp.headers.get('Set-Cookie', None)
         self.assertEqual(header, None)
 

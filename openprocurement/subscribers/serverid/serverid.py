@@ -1,6 +1,10 @@
 # -*- coding: utf-8 -*-
 import uuid
-from Cookie import SimpleCookie
+try:
+    from Cookie import SimpleCookie
+except ImportError:
+    from http.cookies import SimpleCookie  # py3
+from six import b
 from os import environ
 from binascii import hexlify, unhexlify
 from Crypto.Cipher import AES
@@ -29,9 +33,9 @@ def encrypt(sid):
 def decrypt(sid, key):
     try:
         text = AES.new(sid).decrypt(unhexlify(key))
-        text.startswith(sid)
-    except:
-        text = ""
+    except Exception as e:
+        logger.exception(e)
+        text = ''
     return text
 
 
@@ -57,7 +61,7 @@ def server_id_validator(event):
     if cookie_server_id:
         value = cookie_server_id.value
         decrypted = decrypt(couchdb_server_id, value)
-        if not decrypted or not decrypted.startswith(couchdb_server_id):
+        if not decrypted or not decrypted.startswith(b(couchdb_server_id)):
             logger.info("Invalid cookie: {}".format(value, extra={"MESSAGE_ID": "serverid_invalid"}))
             raise server_id_response(request)
     elif request.method in ["POST", "PATCH", "PUT", "DELETE"]:
@@ -75,5 +79,5 @@ def includeme(config):
         config.registry.couchdb_server_id = couchdb_server_id
         logger.warning("No 'server_id' specified. Used generated 'server_id' {}".format(couchdb_server_id))
     else:
-        config.registry.couchdb_server_id = md5(server_id).hexdigest()
+        config.registry.couchdb_server_id = md5(b(server_id)).hexdigest()
     config.add_subscriber(server_id_validator, NewRequest)
