@@ -2,15 +2,13 @@ language: python
 sudo: required
 python:
   - "2.7"
+  - "3.6"
 env:
   global:
     - TZ=Europe/Kiev
-  matrix:
-    - SANDBOX_MODE=
-    - SANDBOX_MODE=True
 install:
   - pip install -r requirements.txt
 script:
-  - nosetests --with-coverage
+  - python -m nose --with-coverage
 after_success:
   - coveralls
